@@ -112,7 +112,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (bodyTooLarge) {
-    rep.destroy();
+    res.destroy();
     return;
   }
 

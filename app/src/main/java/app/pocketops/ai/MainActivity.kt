@@ -9,6 +9,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -142,7 +149,7 @@ fun PocketOpsScreen(
                     scanned = true
                 }
             )
-            else -> AiAuditPlaceholder(Modifier.padding(padding))
+            else -> AiAuditScreen(Modifier.padding(padding), apps, scanned)
         }
     }
 }
@@ -235,21 +242,111 @@ private fun AppList(
 }
 
 @Composable
-private fun AiAuditPlaceholder(modifier: Modifier) {
+private fun AiAuditScreen(
+    modifier: Modifier,
+    apps: List<AppEntry>,
+    scanned: Boolean
+) {
+    var result by remember {
+        mutableStateOf("Scan your apps, then start an audit.")
+    }
+    var loading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
     Column(
         modifier = modifier.fillMaxSize().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Claude AI audit", style = MaterialTheme.typography.headlineSmall)
-        Text("The AI connection is intentionally not active yet.")
-        Text("Next milestone:")
-        Text("1. Send a minimized app inventory to a private backend.")
-        Text("2. Receive typed recommendations with reasons and confidence.")
-        Text("3. Show each proposed action for your approval.")
-        Text("4. Validate the action locally before execution.")
+        Text("PocketOps local audit", style = MaterialTheme.typography.headlineSmall)
+        Text("Rule-based screening · Runs locally")
+        Text(if (scanned) "${apps.size} apps ready" else "Scan apps from Overview first")
+
+        Button(
+            enabled = scanned && !loading,
+            onClick = {
+                loading = true
+                result = "Analyzing installed apps..."
+                scope.launch {
+                    result = try {
+                        withContext(Dispatchers.IO) {
+                            analyzeApps(apps)
+                        }
+                    } catch (e: Exception) {
+                        "Connection failed: ${e.message ?: "Unknown error"}\n\nMake sure the Termux analyzer is running."
+                    }
+                    loading = false
+                }
+            }
+        ) {
+            Text(if (loading) "Analyzing..." else "Analyze apps")
+        }
+
+        Text(result, style = MaterialTheme.typography.bodyMedium)
+
         Text(
-            "Do not put an Anthropic API key in this APK. The backend proxy will hold it.",
-            color = MaterialTheme.colorScheme.secondary
+            "Recommendations only. No apps will be removed or disabled.",
+            color = MaterialTheme.colorScheme.secondary,
+            style = MaterialTheme.typography.bodySmall
         )
+    }
+}
+
+
+private fun analyzeApps(apps: List<AppEntry>): String {
+    val connection = URL("http://127.0.0.1:8787/analyze")
+        .openConnection() as HttpURLConnection
+
+    try {
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 10000
+        connection.readTimeout = 15000
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json")
+
+        val payload = JSONObject().put(
+            "apps",
+            JSONArray().apply {
+                apps.forEach { app ->
+                    put(
+                        JSONObject()
+                            .put("packageName", app.packageName)
+                            .put("label", app.label)
+                            .put("isSystem", app.isSystem)
+                    )
+                }
+            }
+        )
+
+        connection.outputStream.use {
+            it.write(payload.toString().toByteArray(Charsets.UTF_8))
+        }
+
+        if (connection.responseCode !in 200..299) {
+            throw IllegalStateException("HTTP ${connection.responseCode}")
+        }
+
+        val response = connection.inputStream.bufferedReader().use {
+            it.readText()
+        }
+
+        val analysis = JSONObject(
+            JSONObject(response).getString("analysis")
+        )
+        val recommendations = analysis.getJSONArray("recommendations")
+
+        return buildString {
+            append(analysis.getString("summary"))
+            append("\n\nRECOMMENDATIONS\n")
+
+            for (i in 0 until recommendations.length()) {
+                val item = recommendations.getJSONObject(i)
+                append("\n${item.getString("label")}")
+                append(" · ${item.getString("risk").uppercase()}")
+                append("\n${item.getString("action")}")
+                append("\n${item.getString("reason")}\n")
+            }
+        }
+    } finally {
+        connection.disconnect()
     }
 }
