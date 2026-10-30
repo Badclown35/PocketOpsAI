@@ -9,6 +9,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -16,15 +19,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import rikka.shizuku.Shizuku
 
 data class AppEntry(
     val label: String,
     val packageName: String,
-    val isSystem: Boolean
+    val isSystem: Boolean,
+    val isEnabled: Boolean
 )
 
 class MainActivity : ComponentActivity() {
@@ -49,7 +50,8 @@ class MainActivity : ComponentActivity() {
                 AppEntry(
                     label = packageManager.getApplicationLabel(it).toString(),
                     packageName = it.packageName,
-                    isSystem = (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    isSystem = (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+                    isEnabled = it.enabled
                 )
             }
             .sortedBy { it.label.lowercase() }
@@ -228,10 +230,17 @@ private fun AppList(
                         headlineContent = { Text(app.label) },
                         supportingContent = { Text(app.packageName) },
                         trailingContent = {
-                            Text(
-                                if (app.isSystem) "System" else "User",
-                                style = MaterialTheme.typography.labelSmall
-                            )
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    if (app.isSystem) "System" else "User",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Text(
+                                    if (app.isEnabled) "Enabled" else "Disabled",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (app.isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     )
                     HorizontalDivider()
