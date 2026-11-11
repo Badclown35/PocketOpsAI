@@ -39,3 +39,9 @@ files, GitHub, or the APK.
   in the app before execution.
 - Core phone, launcher, notification, Bluetooth, GPS, mobile data, and Google
   services components must be protected by a local denylist.
+
+---
+
+## AI-assisted development
+
+> **Vibe coded with AI.** This project was built and iterated on with AI assistance, guided by human ideas, prompts, testing, and decisions. AI-generated contributions may contain mistakes; review and verify changes before use.
